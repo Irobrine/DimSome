@@ -5,6 +5,11 @@ full-screen black overlay over selected apps, with opacity adjustable from
 `0%` (no change) to `100%`. The overlay never intercepts input — taps,
 scrolling, typing, and gestures pass straight through to the app underneath.
 
+Basic D-pad/remote navigation is supported. App Dimmer is also especially useful
+with displays that ignore Android's brightness control, such as **AR glasses**:
+the dim layer is rendered by the app itself, so it still darkens the content when
+the external display's brightness cannot be changed from Android.
+
 There are two overlay engines:
 
 | Mode | Max darkness | Requires | Draws with |
@@ -18,9 +23,14 @@ devices that stop accessibility services randomly.
 ## Features
 
 - Pick any launchable app with a searchable list.
+- Always-visible touch/drag alphabetical sidebar for jumping through the app
+  list, with a **TOP** shortcut.
 - Master on/off switch.
 - Overlay mode selector (Full black / Compatibility).
 - Opacity slider from 0 to 100, with a live preview.
+- Basic D-pad/remote navigation: Up/Down move focus and Left/Right adjust the
+  opacity slider.
+- Works with displays that ignore system brightness, including AR glasses.
 - Overlay only appears over the selected apps; the home screen, lock screen,
   our own UI, and unselected apps are untouched.
 - Ignores the keyboard, so typing does not make the overlay disappear.
@@ -78,6 +88,15 @@ the preview reflects the effective darkness.
 Touches still work underneath. Pressing Home or Recents removes the overlay
 because the foreground app changes.
 
+## Remote control
+
+Basic D-pad support is built in:
+
+- **Up/Down** move focus between controls.
+- **Left/Right** adjust the opacity slider while it is focused.
+- Mode radios, the master switch, search, and app rows can be reached with
+  focus navigation.
+
 ## How it works
 
 ### Full black engine
@@ -107,8 +126,9 @@ because the foreground app changes.
   flicker.
 - A `BOOT_COMPLETED` receiver restarts the foreground service after a reboot if
   the mode is enabled and its permissions are still granted.
-- The foreground service shows a low-priority notification with a **Stop**
-  action, as required by Android for long-running foreground services.
+- The foreground service runs without asking for notification permission.
+  Android may suppress the service notification; use the switch in the app to
+  stop compatibility mode.
 
 ### Shared behavior
 
@@ -144,8 +164,8 @@ app/src/main/java/com/mono/appdimmer/
 - If the overlay ever stops in Full black mode, switch to **Compatibility**.
   It is independent of the accessibility service and generally survives
   aggressive OEM background management better.
-- Compatibility mode requires a persistent low-priority notification because it
-  uses a foreground service.
+- Compatibility mode uses a foreground service but does not request
+  notification permission. Android may hide the service notification.
 - Some OEM skins delay or suppress accessibility window events. The full-black
   engine re-checks the foreground every second as a fallback.
 - On aggressive OEM skins, exclude App Dimmer from battery optimization and

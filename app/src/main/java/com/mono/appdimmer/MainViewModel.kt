@@ -51,8 +51,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadApps() {
         viewModelScope.launch {
-            val apps = runCatching { InstalledApps.load(app) }.getOrDefault(emptyList())
-            val installedPackages = apps.mapTo(HashSet()) { it.packageName }
+            // Labels first so the list and alphabet sidebar appear immediately.
+            val metadata = runCatching { InstalledApps.loadMetadata(app) }
+                .getOrDefault(emptyList())
+            val installedPackages = metadata.mapTo(HashSet()) { it.packageName }
             val cleanedSelection = _uiState.value.selectedPackages.intersect(installedPackages)
 
             if (cleanedSelection != _uiState.value.selectedPackages) {
@@ -60,10 +62,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiState.value = _uiState.value.copy(
-                apps = apps,
+                apps = metadata,
                 appsLoading = false,
                 selectedPackages = cleanedSelection,
             )
+
+            // Icons are expensive; fill them in without blocking the list.
+            val withIcons = runCatching { InstalledApps.loadIcons(app, metadata) }
+                .getOrDefault(metadata)
+            _uiState.value = _uiState.value.copy(apps = withIcons)
         }
     }
 

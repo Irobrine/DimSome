@@ -1,11 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Left temple arm. -->
     <path
-        android:fillColor="#FFCC66"
-        android:fillType="evenOdd"
-        android:pathData="M54,26 A28,28 0 1,0 54,82 A28,28 0 1,0 54,26 Z M70,20 A28,28 0 1,0 70,76 A28,28 0 1,0 70,20 Z" />
+        android:fillColor="#FFD98A"
+        android:pathData="M23,46 L12,42 V48 L23,51 Z" />
+
+    <!-- Right temple arm. -->
+    <path
+        android:fillColor="#FFD98A"
+        android:pathData="M85,46 L96,42 V48 L85,51 Z" />
+
+    <!-- Left lens with the gold gradient. -->
+    <path
+        android:pathData="M28,41 H43 A5,5 0 0 1 48,46 V60 A5,5 0 0 1 43,65 H28 A5,5 0 0 1 23,60 V46 A5,5 0 0 1 28,41 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="23"
+                android:startY="41"
+                android:endX="48"
+                android:endY="65"
+                android:startColor="#FFF3D6"
+                android:centerColor="#FFD98A"
+                android:endColor="#FFC24D" />
+        </aapt:attr>
+    </path>
+
+    <!-- Right lens. -->
+    <path
+        android:fillColor="#FFCF70"
+        android:pathData="M65,41 H80 A5,5 0 0 1 85,46 V60 A5,5 0 0 1 80,65 H65 A5,5 0 0 1 60,60 V46 A5,5 0 0 1 65,41 Z" />
+
+    <!-- Left tinted lens. -->
+    <path
+        android:pathData="M29,43.5 H42 A3.5,3.5 0 0 1 45.5,47 V59 A3.5,3.5 0 0 1 42,62.5 H29 A3.5,3.5 0 0 1 25.5,59 V47 A3.5,3.5 0 0 1 29,43.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="25.5"
+                android:startY="43.5"
+                android:endX="45.5"
+                android:endY="62.5"
+                android:startColor="#E0A0702C"
+                android:endColor="#F00A0805" />
+        </aapt:attr>
+    </path>
+
+    <!-- Right tinted lens. -->
+    <path
+        android:pathData="M66,43.5 H79 A3.5,3.5 0 0 1 82.5,47 V59 A3.5,3.5 0 0 1 79,62.5 H66 A3.5,3.5 0 0 1 62.5,59 V47 A3.5,3.5 0 0 1 66,43.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="62.5"
+                android:startY="43.5"
+                android:endX="82.5"
+                android:endY="62.5"
+                android:startColor="#D98A6626"
+                android:endColor="#F00A0805" />
+        </aapt:attr>
+    </path>
+
+    <!-- Bridge. -->
+    <path
+        android:fillColor="#FFCF70"
+        android:pathData="M48,50 H60 V54 H48 Z" />
 </vector>

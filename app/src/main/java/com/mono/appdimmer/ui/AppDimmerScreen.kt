@@ -4,8 +4,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,25 +59,61 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mono.appdimmer.MainUiState
 import com.mono.appdimmer.R
 import com.mono.appdimmer.data.InstalledApp
 import com.mono.appdimmer.data.OverlayEngine
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val ReadyGreen = Color(0xFF7CE0A3)
 private val MutedText = Color(0xFFA8ACB8)
+
+private data class SidebarEntry(val label: String, val appIndex: Int?)
+
+private fun buildSidebarEntries(apps: List<InstalledApp>): List<SidebarEntry> {
+    val entries = ArrayList<SidebarEntry>()
+    entries += SidebarEntry(label = "TOP", appIndex = null)
+
+    val firstIndexByLetter = LinkedHashMap<Char, Int>()
+    apps.forEachIndexed { index, app ->
+        val first = app.label.trim().firstOrNull()
+        val letter = first?.uppercaseChar()?.takeIf { it in 'A'..'Z' } ?: '#'
+        if (!firstIndexByLetter.containsKey(letter)) {
+            firstIndexByLetter[letter] = index
+        }
+    }
+    firstIndexByLetter.forEach { (letter, index) ->
+        entries += SidebarEntry(label = letter.toString(), appIndex = index)
+    }
+
+    return entries
+}
 
 @Composable
 fun AppDimmerScreen(
@@ -114,6 +153,24 @@ fun AppDimmerScreen(
         }
     }
 
+    val scope = rememberCoroutineScope()
+    var activeLabel by remember { mutableStateOf<String?>(null) }
+
+    val showEmptySelectionHint = !state.appsLoading &&
+        state.selectedPackages.isEmpty() &&
+        filteredApps.isNotEmpty()
+    val appHeaderItemCount = 4 +
+        (if (setupNeeded) 1 else 0) +
+        (if (showEmptySelectionHint) 1 else 0)
+    val sidebarEntries = remember(filteredApps) { buildSidebarEntries(filteredApps) }
+    val showSidebar = !state.appsLoading &&
+        filteredApps.isNotEmpty() &&
+        sidebarEntries.size > 1
+
+    LaunchedEffect(showSidebar) {
+        if (!showSidebar) activeLabel = null
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -123,79 +180,100 @@ fun AppDimmerScreen(
             )
         },
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                top = 6.dp,
-                bottom = 32.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item(key = "mode") {
-                OverlayModeCard(
-                    engine = state.engine,
-                    onEngineChange = onEngineChange,
-                )
-            }
-
-            if (setupNeeded) {
-                item(key = "setup") {
-                    SetupCard(
-                        state = state,
-                        onRequestOverlayPermission = onRequestOverlayPermission,
-                        onRequestUsageAccess = onRequestUsageAccess,
-                        onRequestAccessibility = onRequestAccessibility,
-                    )
-                }
-            }
-
-            item(key = "dim-level") {
-                DimLevelCard(
-                    opacity = state.opacity,
-                    engine = state.engine,
-                    onOpacityChange = onOpacityChange,
-                )
-            }
-
-            item(key = "touch-note") {
-                TouchPassthroughNote()
-            }
-
-            item(key = "apps-header") {
-                AppsHeader(
-                    selectedCount = state.selectedPackages.size,
-                    query = query,
-                    onQueryChange = { query = it },
-                    onClearSelection = onClearSelection,
-                )
-            }
-
-            if (state.appsLoading) {
-                item(key = "loading") { LoadingRow() }
-            } else {
-                if (state.selectedPackages.isEmpty() && filteredApps.isNotEmpty()) {
-                    item(key = "empty-selection") { EmptySelectionHint() }
-                }
-
-                items(
-                    items = filteredApps,
-                    key = { it.packageName },
-                ) { app ->
-                    AppRow(
-                        app = app,
-                        selected = app.packageName in state.selectedPackages,
-                        onToggle = { onToggleApp(app.packageName) },
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 20.dp,
+                    // Permanent gutter for the always-visible app sidebar.
+                    end = 56.dp,
+                    top = 6.dp,
+                    bottom = 32.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item(key = "mode") {
+                    OverlayModeCard(
+                        engine = state.engine,
+                        onEngineChange = onEngineChange,
                     )
                 }
 
-                if (filteredApps.isEmpty()) {
-                    item(key = "no-results") { NoResults(query = query) }
+                if (setupNeeded) {
+                    item(key = "setup") {
+                        SetupCard(
+                            state = state,
+                            onRequestOverlayPermission = onRequestOverlayPermission,
+                            onRequestUsageAccess = onRequestUsageAccess,
+                            onRequestAccessibility = onRequestAccessibility,
+                        )
+                    }
                 }
+
+                item(key = "dim-level") {
+                    DimLevelCard(
+                        opacity = state.opacity,
+                        engine = state.engine,
+                        onOpacityChange = onOpacityChange,
+                    )
+                }
+
+                item(key = "touch-note") {
+                    TouchPassthroughNote()
+                }
+
+                item(key = "apps-header") {
+                    AppsHeader(
+                        selectedCount = state.selectedPackages.size,
+                        query = query,
+                        onQueryChange = { query = it },
+                        onClearSelection = onClearSelection,
+                    )
+                }
+
+                if (state.appsLoading) {
+                    item(key = "loading") { LoadingRow() }
+                } else {
+                    if (showEmptySelectionHint) {
+                        item(key = "empty-selection") { EmptySelectionHint() }
+                    }
+
+                    items(
+                        items = filteredApps,
+                        key = { it.packageName },
+                    ) { app ->
+                        AppRow(
+                            app = app,
+                            selected = app.packageName in state.selectedPackages,
+                            onToggle = { onToggleApp(app.packageName) },
+                        )
+                    }
+
+                    if (filteredApps.isEmpty()) {
+                        item(key = "no-results") { NoResults(query = query) }
+                    }
+                }
+            }
+
+            if (showSidebar) {
+                AppSidebar(
+                    entries = sidebarEntries,
+                    activeLabel = activeLabel,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 3.dp),
+                    onSelect = { entry ->
+                        activeLabel = entry.label
+                        val target = entry.appIndex?.let { appHeaderItemCount + it } ?: 0
+                        scope.launch { listState.scrollToItem(target) }
+                    },
+                    onRelease = { activeLabel = null },
+                )
             }
         }
     }
@@ -239,11 +317,10 @@ private fun Header(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_moon),
+            Image(
+                painter = painterResource(R.drawable.ic_ar_glasses),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(27.dp),
+                modifier = Modifier.size(32.dp),
             )
         }
 
@@ -529,6 +606,136 @@ private fun ModeOption(
 }
 
 @Composable
+private fun AppSidebar(
+    entries: List<SidebarEntry>,
+    activeLabel: String?,
+    onSelect: (SidebarEntry) -> Unit,
+    onRelease: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (entries.isEmpty()) return
+
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnRelease by rememberUpdatedState(onRelease)
+
+    BoxWithConstraints(modifier = modifier) {
+        val availableHeight = (maxHeight - 12.dp).coerceAtLeast(1.dp)
+        val itemHeight = (availableHeight / entries.size.toFloat())
+            .coerceAtMost(21.dp)
+            .coerceAtLeast(6.dp)
+        val itemHeightPx = with(density) { itemHeight.toPx() }
+        val markerSize = itemHeight.coerceAtMost(18.dp)
+        // The index is a compact control with fixed-size rows; compensate for
+        // system font scaling so letters can never grow into each other.
+        val fontScale = density.fontScale.coerceAtLeast(0.5f)
+
+        Column(
+            modifier = Modifier
+                .width(39.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                .padding(horizontal = 3.dp, vertical = 6.dp)
+                .pointerInput(entries, itemHeightPx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var lastLabel: String? = null
+
+                        fun selectAt(y: Float) {
+                            val index = (y / itemHeightPx).toInt()
+                                .coerceIn(0, entries.lastIndex)
+                            val entry = entries[index]
+                            if (entry.label != lastLabel) {
+                                lastLabel = entry.label
+                                haptics.performHapticFeedback(
+                                    HapticFeedbackType.TextHandleMove,
+                                )
+                                currentOnSelect(entry)
+                            }
+                        }
+
+                        try {
+                            selectAt(down.position.y)
+                            down.consume()
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: break
+                                if (!change.pressed) break
+                                selectAt(change.position.y)
+                                change.consume()
+                            }
+                        } finally {
+                            currentOnRelease()
+                        }
+                    }
+                },
+        ) {
+            entries.forEach { entry ->
+                val isTop = entry.appIndex == null
+                val isActive = entry.label == activeLabel
+                val desiredFontSize = if (isTop) {
+                    (itemHeight.value * 0.50f).coerceIn(5f, 11f)
+                } else {
+                    (itemHeight.value * 0.65f).coerceIn(5f, 14f)
+                }
+                val fontSize = (desiredFontSize / fontScale).sp
+                val lineHeight = (fontSize.value * 1.15f).sp
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(itemHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val markerModifier = if (isTop) {
+                        Modifier
+                            .fillMaxWidth()
+                            .height((itemHeight - 2.dp).coerceAtLeast(1.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                    } else {
+                        Modifier
+                            .size(markerSize)
+                            .clip(CircleShape)
+                    }
+
+                    Box(
+                        modifier = markerModifier.background(
+                            if (isActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = entry.label,
+                            fontSize = fontSize,
+                            lineHeight = lineHeight,
+                            fontWeight = if (isActive || isTop) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Medium
+                            },
+                            color = if (isActive) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DimLevelCard(
     opacity: Int,
     engine: OverlayEngine,
@@ -540,6 +747,7 @@ private fun DimLevelCard(
     } else {
         opacity
     }
+    val focusManager = LocalFocusManager.current
 
     SurfaceCard {
         Row(verticalAlignment = Alignment.Bottom) {
@@ -568,7 +776,25 @@ private fun DimLevelCard(
             value = opacity.toFloat(),
             onValueChange = { onOpacityChange(it.roundToInt()) },
             valueRange = 0f..100f,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onPreviewKeyEvent { event ->
+                    // Material's Slider treats Up/Down as value changes, which
+                    // traps D-pad focus on this control. Let only Left/Right
+                    // adjust the value; Up/Down should navigate away.
+                    if (event.type == KeyEventType.KeyDown) {
+                        val direction = when (event.key) {
+                            Key.DirectionUp -> FocusDirection.Up
+                            Key.DirectionDown -> FocusDirection.Down
+                            else -> null
+                        }
+                        if (direction != null) {
+                            focusManager.moveFocus(direction)
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    false
+                },
             colors = SliderDefaults.colors(
                 thumbColor = MaterialTheme.colorScheme.primary,
                 activeTrackColor = MaterialTheme.colorScheme.primary,
@@ -820,13 +1046,23 @@ private fun AppRow(
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            bitmap = app.icon,
-            contentDescription = null,
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(12.dp)),
-        )
+        val iconModifier = Modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(12.dp))
+
+        if (app.icon != null) {
+            Image(
+                bitmap = app.icon,
+                contentDescription = null,
+                modifier = iconModifier,
+            )
+        } else {
+            Box(
+                modifier = iconModifier.background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            )
+        }
 
         Spacer(Modifier.width(12.dp))
 

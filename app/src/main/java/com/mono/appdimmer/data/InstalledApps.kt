@@ -13,16 +13,17 @@ import java.util.Locale
 data class InstalledApp(
     val packageName: String,
     val label: String,
-    val icon: ImageBitmap,
+    val icon: ImageBitmap?,
 )
 
 object InstalledApps {
 
     /**
-     * Returns every app that has a launcher entry, excluding App Dimmer itself.
-     * Icons are rasterised once here so the list scrolls smoothly.
+     * Returns labels and package names first. This is fast, so the app list and
+     * alphabetical sidebar can render immediately instead of waiting for every
+     * launcher icon to be rasterised.
      */
-    suspend fun load(context: Context): List<InstalledApp> = withContext(Dispatchers.IO) {
+    suspend fun loadMetadata(context: Context): List<InstalledApp> = withContext(Dispatchers.IO) {
         val packageManager = context.packageManager
         val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
@@ -40,12 +41,27 @@ object InstalledApps {
                 InstalledApp(
                     packageName = info.packageName,
                     label = info.loadLabel(packageManager).toString(),
-                    icon = info.loadIcon(packageManager)
-                        .toBitmap(96, 96)
-                        .asImageBitmap(),
+                    icon = null,
                 )
             }
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
             .toList()
+    }
+
+    /** Fills in the icons after the list is already on screen. */
+    suspend fun loadIcons(
+        context: Context,
+        apps: List<InstalledApp>,
+    ): List<InstalledApp> = withContext(Dispatchers.IO) {
+        val packageManager = context.packageManager
+        apps.map { app ->
+            val icon = runCatching {
+                packageManager.getApplicationInfo(app.packageName, 0)
+                    .loadIcon(packageManager)
+                    .toBitmap(96, 96)
+                    .asImageBitmap()
+            }.getOrNull()
+            app.copy(icon = icon)
+        }
     }
 }
