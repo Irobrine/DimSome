@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">App Dimmer</string>
+    <string name="accessibility_service_label">App Dimmer</string>
+    <string name="accessibility_service_description">App Dimmer reads only the name of the app currently on screen, so it knows when to show the dim overlay. It never reads screen content and cannot control your device.</string>
+
+    <string name="notification_channel_name">Compatibility overlay</string>
+    <string name="notification_channel_description">Keeps the compatibility dim overlay running.</string>
+    <string name="notification_title">App Dimmer is on</string>
+    <string name="notification_text">Compatibility mode · up to 80% dimming</string>
+    <string name="notification_stop">Stop</string>
+</resources>
